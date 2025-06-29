@@ -38,7 +38,7 @@ jobs:
           npm run build
 
           echo "Restart app with pm2"
-          pm2 restart nest-app || pm2 start dist/main.js --name nest-app
+          pm2 restart nestjs-app || pm2 start dist/main.js --name nestjs-app
 
           echo "Deploy completed"
         EOF
