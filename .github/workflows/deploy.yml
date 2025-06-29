@@ -1,0 +1,44 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up SSH key
+      uses: webfactory/ssh-agent@v0.8.1
+      with:
+        ssh-private-key: ${{ secrets.EC2_PRIVATE_KEY }}
+
+    - name: Deploy to EC2 server
+      env:
+        HOST: ${{ secrets.EC2_HOST }}
+        USER: ${{ secrets.EC2_USER }}
+        APP_DIR: ${{ secrets.EC2_APP_DIR }}
+      run: |
+        ssh -o StrictHostKeyChecking=no $USER@$HOST << EOF
+          set -e
+          echo "Pull code from git repo"
+          cd $APP_DIR
+          git reset --hard
+          git pull origin main
+
+          echo "Install dependencies"
+          npm install
+
+          echo "Build app"
+          npm run build
+
+          echo "Restart app with pm2"
+          pm2 restart nest-app || pm2 start dist/main.js --name nest-app
+
+          echo "Deploy completed"
+        EOF
