@@ -38,9 +38,6 @@ jobs:
           npm run build
 
           echo "Restart app with pm2"
-          pm2 stop nest-app || true
-          pm2 delete nest-app || true
-
           pm2 stop nestjs-app || true
           pm2 delete nestjs-app || true
 
