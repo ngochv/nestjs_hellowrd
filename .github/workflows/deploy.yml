@@ -26,19 +26,29 @@ jobs:
       run: |
         ssh -o StrictHostKeyChecking=no $USER@$HOST << EOF
           set -e
-          echo "Pull code from git repo"
           cd $APP_DIR
+          echo "Git info:"
           git reset --hard
           git pull origin main
+          git log -1 --oneline
 
           echo "Install dependencies"
-          npm install
+          npm ci
 
-          echo "Build app"
+          echo "Build project"
           npm run build
 
-          echo "Restart app with pm2"
-          pm2 restart nestjs-app || pm2 start dist/main.js --name nestjs-app
+          echo "Stop and delete old PM2 app if exists"
+          pm2 stop nestjs-app || true
+          pm2 delete nestjs-app || true
+
+          echo "Start PM2 app"
+          pm2 start dist/main.js --name nestjs-app
+          pm2 save
+
+          echo "PM2 status:"
+          pm2 list
+          pm2 describe nestjs-app
 
           echo "Deploy completed"
         EOF
