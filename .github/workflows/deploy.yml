@@ -7,7 +7,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout code
@@ -26,13 +26,18 @@ jobs:
       run: |
         ssh -o StrictHostKeyChecking=no $USER@$HOST << EOF
           set -e
+          echo "Pull code from git repo"
           cd $APP_DIR
           git reset --hard
           git pull origin main
 
+          echo "Install dependencies"
           npm ci
+
+          echo "Build app"
           npm run build
 
+          echo "Restart app with pm2"
           pm2 stop nest-app || true
           pm2 delete nest-app || true
 
@@ -42,5 +47,6 @@ jobs:
           pm2 start dist/main.js --name nestjs-app
           pm2 save
 
+          echo "Deploy completed"
           pm2 list
         EOF
