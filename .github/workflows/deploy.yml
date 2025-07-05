@@ -1,4 +1,4 @@
-name: Deploy to EC2
+name: Deploy to EC2 via SSM
 
 on:
   push:
@@ -7,43 +7,51 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up SSH key
-      uses: webfactory/ssh-agent@v0.9.0
-      with:
-        ssh-private-key: ${{ secrets.EC2_PRIVATE_KEY }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Deploy to EC2 server
-      env:
-        HOST: ${{ secrets.EC2_HOST }}
-        USER: ${{ secrets.EC2_USER }}
-        APP_DIR: ${{ secrets.EC2_APP_DIR }}
-      run: |
-        ssh -o StrictHostKeyChecking=no $USER@$HOST << EOF
-          set -e
-          echo "Pull code from git repo"
-          cd $APP_DIR
-          git reset --hard
-          git pull origin main
+      - name: Send SSM Command to EC2
+        id: send_command
+        run: |
+          INSTANCE_ID=i-0d7825c496480b14e  # Thay bằng ID EC2 của bạn
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids $INSTANCE_ID \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy app from GitHub Actions" \
+            --parameters commands=["/home/ubuntu/deploy.sh"] \
+            --query "Command.CommandId" --output text)
+          echo "Command ID: $COMMAND_ID"
 
-          echo "Install dependencies"
-          npm ci
+          # Lấy kết quả command invocation
+          echo "::set-output name=command_id::$COMMAND_ID"
 
-          echo "Build app"
-          npm run build
+      - name: Wait for command completion
+        run: |
+          INSTANCE_ID=i-0123456789abcdef0
+          COMMAND_ID=${{ steps.send_command.outputs.command_id }}
 
-          echo "Restart app with pm2"
-          pm2 stop nestjs-app || true
-          pm2 delete nestjs-app || true
+          STATUS="Pending"
+          while [[ "$STATUS" == "Pending" || "$STATUS" == "InProgress" ]]; do
+            STATUS=$(aws ssm list-command-invocations \
+              --command-id $COMMAND_ID \
+              --details \
+              --query "CommandInvocations[0].Status" --output text)
+            echo "Command status: $STATUS"
+            sleep 5
+          done
 
-          pm2 start dist/main.js --name nestjs-app
-          pm2 save
-
-          echo "Deploy completed"
-          pm2 list
-        EOF
+          if [[ "$STATUS" != "Success" ]]; then
+            echo "Deploy command failed with status: $STATUS"
+            exit 1
+          fi
+          echo "Deploy command succeeded!"
